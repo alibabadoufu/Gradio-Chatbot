@@ -1,0 +1,34 @@
+# API Configuration
+api:
+  llm_url: "https://your-in-house-llm-api.com/v1/chat"
+  sharepoint_base_url: "https://your-sharepoint-site.com/sites/docs/"
+
+# Application Defaults
+defaults:
+  llm_model: "default-model-v1"
+  temperature: 0.7
+  top_k: 50
+  focus_mode: "DocChat"
+  recency_bias: false
+
+# UI Messages
+ui_messages:
+  acknowledgement: >
+    **Terms and Conditions of Use**
+
+    Welcome to the GenAI Chat Application. By using this service, you agree to...
+    [Your full terms and conditions text here]
+
+  system_message: "I am your AI assistant, here to help you with your documents. How can I assist you today?"
+
+# Available Models and Tags (These could also be fetched dynamically)
+models:
+  - "default-model-v1"
+  - "creative-model-v2"
+  - "research-model-alpha"
+
+document_tags:
+  - "Financial Reports"
+  - "Project Proposals"
+  - "Technical Specifications"
+  - "Marketing Materials"
