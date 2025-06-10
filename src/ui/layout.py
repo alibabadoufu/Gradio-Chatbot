@@ -5,10 +5,10 @@ Module to define the overall UI layout and structure for the GenAI Chat Applicat
 import gradio as gr
 from typing import Dict, Any
 
-from src.ui.components import setup_component_interactions
+from src.ui.integration import on_chat_submit, on_regenerate, on_feedback_submit
 
 
-def create_layout(components: Dict[str, Any], graph: Any, config: Dict[str, Any]) -> gr.Blocks:
+def create_layout(components: Dict[str, Any], graph: Any, config: Dict[str, Any], llm_api: Any) -> gr.Blocks:
     """
     Create the overall UI layout for the GenAI Chat Application.
     
@@ -16,6 +16,7 @@ def create_layout(components: Dict[str, Any], graph: Any, config: Dict[str, Any]
         components: The UI components.
         graph: The Langgraph workflow.
         config: The application configuration.
+        llm_api: The LLM API client.
         
     Returns:
         A Gradio Blocks interface.
@@ -113,8 +114,115 @@ def create_layout(components: Dict[str, Any], graph: Any, config: Dict[str, Any]
                     components["feedback_text"]
                     components["feedback_submit"]
         
-        # Setup component interactions
-        setup_component_interactions(components, config, graph)
+        # Setup component interactions within the Blocks context
+        
+        # Focus mode change handler
+        def on_focus_mode_change(focus_mode):
+            return gr.update(visible=focus_mode == "DocCompare")
+        
+        components["focus_mode"].change(
+            on_focus_mode_change,
+            inputs=[components["focus_mode"]],
+            outputs=[components["document_selector"]]
+        )
+        
+        # Document tags change handler
+        def on_document_tags_change(document_tags):
+            # In a real implementation, this would fetch document titles from SharePoint
+            # For now, we'll use mock data
+            mock_documents = {
+                "Financial Reports": [
+                    "Q1 2025 Financial Report",
+                    "Annual Report 2024",
+                    "Budget Forecast 2025-2026"
+                ],
+                "Project Proposals": [
+                    "AI Integration Initiative",
+                    "Cloud Migration Strategy",
+                    "Mobile App Development Proposal"
+                ],
+                "Technical Specifications": [
+                    "System Architecture v2.0",
+                    "API Documentation",
+                    "Database Schema"
+                ],
+                "Marketing Materials": [
+                    "Brand Guidelines 2025",
+                    "Product Launch Campaign",
+                    "Market Analysis Report"
+                ]
+            }
+            
+            document_titles = []
+            for tag in document_tags:
+                if tag in mock_documents:
+                    document_titles.extend(mock_documents[tag])
+            
+            return gr.update(choices=document_titles)
+        
+        components["document_tags"].change(
+            on_document_tags_change,
+            inputs=[components["document_tags"]],
+            outputs=[components["document_selector"]]
+        )
+        
+        # Connect the chat submission handler to the UI
+        components["submit_button"].click(
+            lambda *args: on_chat_submit(*args, llm_api=llm_api, config=config),
+            inputs=[
+                components["chat_input"],
+                components["chat_history"],
+                components["model_selector"],
+                components["temperature_slider"],
+                components["top_k_slider"],
+                components["document_tags"],
+                components["focus_mode"],
+                components["document_selector"],
+                components["recency_bias"]
+            ],
+            outputs=[
+                components["chat_input"],
+                components["chat_history"],
+                components["thoughts_display"],
+                components["thoughts_content"],
+                components["feedback_container"]
+            ]
+        )
+        
+        # Connect the regenerate handler to the UI
+        components["regenerate_button"].click(
+            lambda *args: on_regenerate(*args, llm_api=llm_api, config=config),
+            inputs=[
+                components["chat_history"],
+                components["model_selector"],
+                components["temperature_slider"],
+                components["top_k_slider"],
+                components["document_tags"],
+                components["focus_mode"],
+                components["document_selector"],
+                components["recency_bias"]
+            ],
+            outputs=[
+                components["chat_history"],
+                components["thoughts_display"],
+                components["thoughts_content"],
+                components["feedback_container"]
+            ]
+        )
+        
+        # Connect the feedback handler to the UI
+        components["feedback_submit"].click(
+            on_feedback_submit,
+            inputs=[
+                components["feedback_buttons"],
+                components["feedback_text"],
+                components["chat_history"]
+            ],
+            outputs=[
+                components["feedback_buttons"],
+                components["feedback_text"]
+            ]
+        )
         
         # Terms acceptance handler
         def on_terms_accept():
