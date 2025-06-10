@@ -15,7 +15,6 @@ import logging
 
 from src.ui.layout import create_layout
 from src.ui.components import create_components
-from src.ui.integration import integrate_llm_with_ui
 from src.core.langgraph_setup import setup_langgraph
 from src.api.llm_api import LLMApi
 from src.utils.helpers import load_config
@@ -106,13 +105,10 @@ def main():
     logger.info("Creating UI components")
     components = create_components(config)
     
-    # Integrate LLM with UI
-    logger.info("Integrating LLM with UI")
-    integrate_llm_with_ui(components, config, llm_api)
-    
     # Create and launch the Gradio interface
+    # Note: All event bindings are now handled within the create_layout function
     logger.info("Creating Gradio interface")
-    interface = create_layout(components, graph, config)
+    interface = create_layout(components, graph, config, llm_api)
     
     logger.info(f"Launching Gradio server on {args.host}:{args.port}")
     interface.launch(
