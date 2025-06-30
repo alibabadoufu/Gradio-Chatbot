@@ -1,8 +1,12 @@
 import os
 import gradio as gr
 import shutil
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import datetime, timedelta
 from backend.document_processor import process_document, s3_client, S3_BUCKET_NAME
 from backend.rag_agent import RAGAgent
+from backend.logger import log_conversation, init_db, get_daily_trends, get_conversation_dataframe, get_key_metrics
 
 # Initialize the RAG agent
 rag_agent = RAGAgent()
@@ -19,18 +23,10 @@ def upload_document(file):
         return "No file uploaded", *get_document_list()
     
     try:
-        # Gradio provides a temporary file path, we need to copy it to a known location
-        # or directly process it. For S3, we\'ll process it from the temporary path
-        # and then upload the original to S3.
-        
         # Process the document (this will also upload the raw file and vectorstore to S3)
         vectorstore_name = process_document(file.name)
         
-        # Add to the list of uploaded documents
-        # In a real application, this list would be persisted (e.g., in a database)
-        # For now, we\'ll refresh it by listing from S3.
-        
-        return f"Document \'{vectorstore_name}\' processed successfully!", *get_document_list()
+        return f"Document '{vectorstore_name}' processed successfully!", *get_document_list()
     except Exception as e:
         return f"Error processing document: {str(e)}", *get_document_list()
 
@@ -39,9 +35,9 @@ def get_all_document_names_from_s3():
     doc_names = set()
     try:
         response = s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix="vectorstores/")
-        if 'Contents' in response:
-            for obj in response['Contents']:
-                key = obj['Key']
+        if "Contents" in response:
+            for obj in response["Contents"]:
+                key = obj["Key"]
                 if key.startswith("vectorstores/") and "/index.faiss" in key:
                     # Extract document name from the S3 key (e.g., vectorstores/doc_name/index.faiss)
                     doc_name = key.split("/")[1]
@@ -92,11 +88,14 @@ def chat_with_document(message, history, selected_document):
         )
         
         # Extract the response from the result
-        if result and 'chat_history' in result:
-            response = result['chat_history'][-1].content if result['chat_history'] else "No response generated."
+        if result and "chat_history" in result:
+            response = result["chat_history"][-1].content if result["chat_history"] else "No response generated."
         else:
             response = "No response generated."
         
+        # Log the conversation
+        log_conversation(user_message=message, ai_response=response, selected_document=selected_document)
+
         history.append([message, response])
         return history, ""
     except Exception as e:
@@ -109,6 +108,69 @@ def update_document_dropdown():
     if not current_docs:
         return gr.Dropdown(choices=["Select a document"], value="Select a document", interactive=True)
     return gr.Dropdown(choices=current_docs, value=current_docs[0], interactive=True)
+
+def create_daily_trends_plot(start_date, end_date):
+    """Create a plot showing daily conversation trends"""
+    try:
+        daily_trends = get_daily_trends(start_date, end_date)
+        
+        if daily_trends.empty:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.text(0.5, 0.5, 'No data available for the selected date range', 
+                   ha='center', va='center', transform=ax.transAxes, fontsize=14)
+            ax.set_title('Daily Conversation Trends')
+            plt.tight_layout()
+            return fig
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(daily_trends['date'], daily_trends['conversations'], marker='o', linewidth=2, markersize=6)
+        ax.set_title('Daily Conversation Trends', fontsize=16, fontweight='bold')
+        ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('Number of Conversations', fontsize=12)
+        ax.grid(True, alpha=0.3)
+        
+        # Format x-axis dates
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        ax.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(daily_trends) // 10)))
+        plt.xticks(rotation=45)
+        
+        plt.tight_layout()
+        return fig
+    except Exception as e:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, f'Error creating plot: {str(e)}', 
+               ha='center', va='center', transform=ax.transAxes, fontsize=14)
+        ax.set_title('Daily Conversation Trends')
+        plt.tight_layout()
+        return fig
+
+def update_monitoring_dashboard(start_date, end_date):
+    """Update the monitoring dashboard with filtered data"""
+    try:
+        # Get key metrics
+        metrics = get_key_metrics(start_date, end_date)
+        
+        # Get conversation dataframe
+        conv_df = get_conversation_dataframe(start_date, end_date)
+        
+        # Create daily trends plot
+        plot = create_daily_trends_plot(start_date, end_date)
+        
+        # Format metrics display
+        metrics_text = f"""
+## Key Metrics ({start_date} to {end_date})
+
+- **Total Conversations**: {metrics['total_conversations']}
+- **Total Messages**: {metrics['total_messages']}
+- **Unique Documents Chatted**: {metrics['unique_documents_chatted']}
+        """
+        
+        return metrics_text, plot, conv_df
+    except Exception as e:
+        error_text = f"Error updating dashboard: {str(e)}"
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, 'Error loading data', ha='center', va='center', transform=ax.transAxes)
+        return error_text, fig, None
 
 # Create the Gradio interface
 with gr.Blocks(title="Document Chat RAG System") as demo:
@@ -177,7 +239,6 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
                 docs, page_str, pages = get_document_list(search_query, new_page)
                 return new_page, docs, page_str, pages
 
-
         # Chat Tab
         with gr.TabItem("💬 Chat"):
             gr.Markdown("## Chat with Documents")
@@ -203,6 +264,41 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
                     scale=4
                 )
                 send_btn = gr.Button("Send", variant="primary", scale=1)
+
+        # Monitoring Tab
+        with gr.TabItem("📊 Monitoring"):
+            gr.Markdown("## Usage Dashboard")
+            
+            with gr.Row():
+                with gr.Column(scale=1):
+                    start_date_input = gr.Textbox(
+                        label="Start Date (YYYY-MM-DD)",
+                        value=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+                        placeholder="2024-01-01"
+                    )
+                with gr.Column(scale=1):
+                    end_date_input = gr.Textbox(
+                        label="End Date (YYYY-MM-DD)",
+                        value=datetime.now().strftime("%Y-%m-%d"),
+                        placeholder="2024-12-31"
+                    )
+                with gr.Column(scale=1):
+                    update_dashboard_btn = gr.Button("Update Dashboard", variant="primary")
+            
+            with gr.Row():
+                with gr.Column(scale=1):
+                    metrics_display = gr.Markdown("## Key Metrics\nLoading...")
+                with gr.Column(scale=2):
+                    trends_plot = gr.Plot(label="Daily Conversation Trends")
+            
+            with gr.Row():
+                conversation_data = gr.Dataframe(
+                    label="Conversation Details",
+                    headers=["Timestamp", "Conversation ID", "User Message", "AI Response", "Selected Document"],
+                    datatype=["str", "str", "str", "str", "str"],
+                    interactive=False,
+                    wrap=True
+                )
     
     # Event handlers
     upload_btn.click(
@@ -252,9 +348,24 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
         outputs=[chatbot, msg_input]
     )
 
+    # Monitoring dashboard event handlers
+    update_dashboard_btn.click(
+        fn=update_monitoring_dashboard,
+        inputs=[start_date_input, end_date_input],
+        outputs=[metrics_display, trends_plot, conversation_data]
+    )
+
+    # Load initial dashboard data
+    demo.load(
+        fn=lambda: update_monitoring_dashboard(
+            (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+            datetime.now().strftime("%Y-%m-%d")
+        ),
+        outputs=[metrics_display, trends_plot, conversation_data]
+    )
+
 if __name__ == "__main__":
-    # Initial call to populate the dropdown and list on startup
-    # This is now handled by demo.load and update_document_dropdown initial value
+    init_db() # Initialize the database
     
     # Launch the app
     demo.launch(
@@ -263,3 +374,4 @@ if __name__ == "__main__":
         share=False,
         debug=True
     )
+
