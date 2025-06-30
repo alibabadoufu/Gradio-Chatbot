@@ -10,14 +10,17 @@ rag_agent = RAGAgent()
 # Global variable to store uploaded documents (names of vectorstores)
 uploaded_documents = []
 
+# Pagination settings
+ITEMS_PER_PAGE = 10
+
 def upload_document(file):
     """Process uploaded document and create vectorstore"""
     if file is None:
-        return "No file uploaded", get_document_list()
+        return "No file uploaded", *get_document_list()
     
     try:
         # Gradio provides a temporary file path, we need to copy it to a known location
-        # or directly process it. For S3, we'll process it from the temporary path
+        # or directly process it. For S3, we\'ll process it from the temporary path
         # and then upload the original to S3.
         
         # Process the document (this will also upload the raw file and vectorstore to S3)
@@ -25,36 +28,51 @@ def upload_document(file):
         
         # Add to the list of uploaded documents
         # In a real application, this list would be persisted (e.g., in a database)
-        # For now, we'll refresh it by listing from S3.
+        # For now, we\'ll refresh it by listing from S3.
         
-        return f"Document \'{vectorstore_name}\' processed successfully!", get_document_list()
+        return f"Document \'{vectorstore_name}\' processed successfully!", *get_document_list()
     except Exception as e:
-        return f"Error processing document: {str(e)}", get_document_list()
+        return f"Error processing document: {str(e)}", *get_document_list()
 
-def get_document_list():
-    """Return list of uploaded documents from S3"""
+def get_all_document_names_from_s3():
+    """Helper function to get all document names from S3."""
+    doc_names = set()
     try:
         response = s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix="vectorstores/")
-        if 'Contents' not in response:
-            return "No documents uploaded yet."
-        
-        doc_names = set()
-        for obj in response['Contents']:
-            key = obj['Key']
-            if key.startswith("vectorstores/") and "/index.faiss" in key:
-                # Extract document name from the S3 key (e.g., vectorstores/doc_name/index.faiss)
-                doc_name = key.split("/")[1]
-                doc_names.add(doc_name)
-        
-        global uploaded_documents
-        uploaded_documents = sorted(list(doc_names))
-
-        if not uploaded_documents:
-            return "No documents uploaded yet."
-        
-        return "\n".join([f"• {doc}" for doc in uploaded_documents])
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                key = obj['Key']
+                if key.startswith("vectorstores/") and "/index.faiss" in key:
+                    # Extract document name from the S3 key (e.g., vectorstores/doc_name/index.faiss)
+                    doc_name = key.split("/")[1]
+                    doc_names.add(doc_name)
     except Exception as e:
-        return f"Error listing documents from S3: {str(e)}"
+        print(f"Error getting all document names from S3: {e}")
+    return sorted(list(doc_names))
+
+def get_document_list(search_query="", page=1):
+    """Return list of uploaded documents from S3 with search and pagination"""
+    all_docs = get_all_document_names_from_s3()
+    
+    # Filter by search query
+    if search_query:
+        filtered_docs = [doc for doc in all_docs if search_query.lower() in doc.lower()]
+    else:
+        filtered_docs = all_docs
+
+    # Apply pagination
+    total_pages = (len(filtered_docs) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    start_index = (page - 1) * ITEMS_PER_PAGE
+    end_index = start_index + ITEMS_PER_PAGE
+    paginated_docs = filtered_docs[start_index:end_index]
+
+    global uploaded_documents
+    uploaded_documents = all_docs # Keep all docs for dropdown update
+
+    if not paginated_docs:
+        return "No documents found.", "Page 0/0", 0
+    
+    return "\n".join([f"• {doc}" for doc in paginated_docs]), f"Page {page}/{total_pages}", total_pages
 
 def chat_with_document(message, history, selected_document):
     """Chat with selected document using RAG agent"""
@@ -87,20 +105,7 @@ def chat_with_document(message, history, selected_document):
 
 def update_document_dropdown():
     """Update the dropdown with available documents"""
-    current_docs = []
-    try:
-        response = s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix="vectorstores/")
-        if 'Contents' in response:
-            for obj in response['Contents']:
-                key = obj['Key']
-                if key.startswith("vectorstores/") and "/index.faiss" in key:
-                    doc_name = key.split("/")[1]
-                    current_docs.append(doc_name)
-        current_docs = sorted(list(set(current_docs)))
-    except Exception as e:
-        print(f"Error updating dropdown: {e}")
-        current_docs = []
-
+    current_docs = get_all_document_names_from_s3()
     if not current_docs:
         return gr.Dropdown(choices=["Select a document"], value="Select a document", interactive=True)
     return gr.Dropdown(choices=current_docs, value=current_docs[0], interactive=True)
@@ -134,14 +139,45 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
         # Document List Tab
         with gr.TabItem("📋 Document List"):
             gr.Markdown("## Uploaded Documents")
+            with gr.Row():
+                search_input = gr.Textbox(label="Search Documents", placeholder="Enter document name...")
+                search_btn = gr.Button("Search")
             document_list = gr.Textbox(
                 label="Documents",
-                value=get_document_list(),
+                value="", # Initial value will be set by get_document_list_initial
                 interactive=False,
                 lines=10
             )
+            with gr.Row():
+                prev_page_btn = gr.Button("Previous Page")
+                page_number_display = gr.Textbox(value="Page 1/1", interactive=False, scale=0)
+                next_page_btn = gr.Button("Next Page")
             refresh_btn = gr.Button("Refresh List")
-        
+
+            current_page = gr.State(1)
+            total_pages = gr.State(1)
+
+            def get_document_list_initial():
+                docs, page_str, pages = get_document_list()
+                return docs, page_str, pages
+            
+            demo.load(get_document_list_initial, outputs=[document_list, page_number_display, total_pages])
+
+            def update_document_list_with_pagination(search_query, current_page_num):
+                docs, page_str, pages = get_document_list(search_query, current_page_num)
+                return docs, page_str, pages
+
+            def go_to_prev_page(search_query, current_page_num, total_pages_num):
+                new_page = max(1, current_page_num - 1)
+                docs, page_str, pages = get_document_list(search_query, new_page)
+                return new_page, docs, page_str, pages
+
+            def go_to_next_page(search_query, current_page_num, total_pages_num):
+                new_page = min(total_pages_num, current_page_num + 1)
+                docs, page_str, pages = get_document_list(search_query, new_page)
+                return new_page, docs, page_str, pages
+
+
         # Chat Tab
         with gr.TabItem("💬 Chat"):
             gr.Markdown("## Chat with Documents")
@@ -149,7 +185,7 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
             with gr.Row():
                 document_dropdown = gr.Dropdown(
                     label="Select Document",
-                    choices=["Select a document"] if not uploaded_documents else uploaded_documents,
+                    choices=get_all_document_names_from_s3(), # Initial choices
                     value="Select a document",
                     interactive=True
                 )
@@ -172,12 +208,31 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
     upload_btn.click(
         fn=upload_document,
         inputs=[file_input],
-        outputs=[upload_status, document_list]
+        outputs=[upload_status, document_list, page_number_display, total_pages]
     )
     
     refresh_btn.click(
-        fn=get_document_list,
-        outputs=[document_list]
+        fn=lambda: get_document_list(search_input.value, 1), # Reset to page 1 on refresh
+        inputs=[],
+        outputs=[document_list, page_number_display, total_pages]
+    )
+
+    search_btn.click(
+        fn=lambda query: update_document_list_with_pagination(query, 1), # Reset to page 1 on search
+        inputs=[search_input],
+        outputs=[document_list, page_number_display, total_pages]
+    )
+
+    prev_page_btn.click(
+        fn=go_to_prev_page,
+        inputs=[search_input, current_page, total_pages],
+        outputs=[current_page, document_list, page_number_display, total_pages]
+    )
+
+    next_page_btn.click(
+        fn=go_to_next_page,
+        inputs=[search_input, current_page, total_pages],
+        outputs=[current_page, document_list, page_number_display, total_pages]
     )
     
     refresh_dropdown_btn.click(
@@ -198,26 +253,9 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
     )
 
 if __name__ == "__main__":
-    # These local directories are no longer strictly needed for S3 storage
-    # but can be kept for local temporary file handling if desired.
-    # os.makedirs("gradio_chatbot_rag/vectorstores", exist_ok=True)
-    # os.makedirs("gradio_chatbot_rag/documents", exist_ok=True)
-    
     # Initial call to populate the dropdown and list on startup
-    initial_docs = []
-    try:
-        response = s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix="vectorstores/")
-        if 'Contents' in response:
-            for obj in response['Contents']:
-                key = obj['Key']
-                if key.startswith("vectorstores/") and "/index.faiss" in key:
-                    doc_name = key.split("/")[1]
-                    initial_docs.append(doc_name)
-        global uploaded_documents
-        uploaded_documents = sorted(list(set(initial_docs)))
-    except Exception as e:
-        print(f"Error during initial document list population: {e}")
-
+    # This is now handled by demo.load and update_document_dropdown initial value
+    
     # Launch the app
     demo.launch(
         server_name="0.0.0.0",
@@ -225,5 +263,3 @@ if __name__ == "__main__":
         share=False,
         debug=True
     )
-
-
