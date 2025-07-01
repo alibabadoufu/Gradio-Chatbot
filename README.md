@@ -104,7 +104,7 @@ gradio_chatbot_rag/
 │   ├── document_processor.py  # Document processing and S3 integration
 │   ├── rag_agent.py          # LangGraph agentic RAG pipeline
 │   └── logger.py             # Usage logging and monitoring functions
-├── requirements.txt           # Python dependencies (includes pandas, matplotlib)
+├── requirements.txt           # Python dependencies (includes pandas)
 ├── .env.example              # Environment variables template
 ├── README.md                 # This file
 ├── test_sample.py            # Test script for core functionality
@@ -141,7 +141,7 @@ gradio_chatbot_rag/
 - Interactive chat with document selection
 - **NEW**: Comprehensive monitoring dashboard with:
   - Date range selection controls
-  - Interactive trend charts using matplotlib
+  - Interactive trend charts using Gradio native LinePlot components
   - Detailed conversation data tables
   - Key metrics display
 - Responsive design for desktop and mobile
@@ -175,7 +175,7 @@ get_key_metrics(start_date="2024-01-01", end_date="2024-12-31")
 - Required packages (see requirements.txt):
   - gradio, langchain, langchain-community, langchain-openai
   - faiss-cpu, pypdf, numpy, python-dotenv, langgraph, boto3
-  - **NEW**: pandas, matplotlib (for monitoring and visualization)
+  - **NEW**: pandas (for data processing and monitoring)
 
 ## Testing
 
@@ -228,5 +228,5 @@ The modular architecture allows for easy extensions:
 4. **Database errors**: Check file permissions for SQLite database creation
 5. **Monitoring issues**: Run `python test_logging.py` to verify logging functionality
 6. **Memory issues**: Adjust chunk sizes in `document_processor.py` for large documents
-7. **Plot display issues**: Ensure matplotlib backend is compatible with your system
+7. **Chart display issues**: Ensure your browser supports Gradio's interactive components
 

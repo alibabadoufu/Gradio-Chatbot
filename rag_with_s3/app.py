@@ -1,8 +1,6 @@
 import os
 import gradio as gr
 import shutil
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 from backend.document_processor import process_document, s3_client, S3_BUCKET_NAME
 from backend.rag_agent import RAGAgent
@@ -16,6 +14,7 @@ uploaded_documents = []
 
 # Pagination settings
 ITEMS_PER_PAGE = 10
+CONVERSATIONS_PER_PAGE = 20
 
 def upload_document(file):
     """Process uploaded document and create vectorstore"""
@@ -109,40 +108,77 @@ def update_document_dropdown():
         return gr.Dropdown(choices=["Select a document"], value="Select a document", interactive=True)
     return gr.Dropdown(choices=current_docs, value=current_docs[0], interactive=True)
 
-def create_daily_trends_plot(start_date, end_date):
-    """Create a plot showing daily conversation trends"""
+def create_daily_trends_data(start_date, end_date):
+    """Create data for Gradio LinePlot showing daily conversation trends"""
     try:
         daily_trends = get_daily_trends(start_date, end_date)
         
         if daily_trends.empty:
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.text(0.5, 0.5, 'No data available for the selected date range', 
-                   ha='center', va='center', transform=ax.transAxes, fontsize=14)
-            ax.set_title('Daily Conversation Trends')
-            plt.tight_layout()
-            return fig
+            return None
         
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(daily_trends['date'], daily_trends['conversations'], marker='o', linewidth=2, markersize=6)
-        ax.set_title('Daily Conversation Trends', fontsize=16, fontweight='bold')
-        ax.set_xlabel('Date', fontsize=12)
-        ax.set_ylabel('Number of Conversations', fontsize=12)
-        ax.grid(True, alpha=0.3)
+        # Convert to format expected by Gradio LinePlot
+        data = []
+        for _, row in daily_trends.iterrows():
+            data.append({
+                "date": str(row['date']),
+                "conversations": row['conversations']
+            })
         
-        # Format x-axis dates
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        ax.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(daily_trends) // 10)))
-        plt.xticks(rotation=45)
-        
-        plt.tight_layout()
-        return fig
+        return data
     except Exception as e:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.text(0.5, 0.5, f'Error creating plot: {str(e)}', 
-               ha='center', va='center', transform=ax.transAxes, fontsize=14)
-        ax.set_title('Daily Conversation Trends')
-        plt.tight_layout()
-        return fig
+        print(f"Error creating trends data: {str(e)}")
+        return None
+
+def get_conversation_list_paginated(search_query="", page=1, start_date=None, end_date=None):
+    """Return paginated conversation data with search functionality"""
+    try:
+        # Get all conversation data
+        # Handle optional parameters properly for the function signature
+        start_param = start_date if start_date and start_date.strip() else None
+        end_param = end_date if end_date and end_date.strip() else None
+        conv_df = get_conversation_dataframe(start_param, end_param)
+        
+        if conv_df.empty:
+            return [], "Page 0/0", 0, "No conversations found."
+        
+        # Apply search filter
+        if search_query:
+            mask = (
+                conv_df['user_message'].str.contains(search_query, case=False, na=False) |
+                conv_df['ai_response'].str.contains(search_query, case=False, na=False) |
+                conv_df['selected_document'].str.contains(search_query, case=False, na=False)
+            )
+            filtered_df = conv_df[mask]
+        else:
+            filtered_df = conv_df
+        
+        # Sort by timestamp (newest first)
+        filtered_df = filtered_df.sort_values('timestamp', ascending=False)
+        
+        # Apply pagination
+        total_conversations = len(filtered_df)
+        total_pages = (total_conversations + CONVERSATIONS_PER_PAGE - 1) // CONVERSATIONS_PER_PAGE
+        start_index = (page - 1) * CONVERSATIONS_PER_PAGE
+        end_index = start_index + CONVERSATIONS_PER_PAGE
+        paginated_df = filtered_df.iloc[start_index:end_index]
+        
+        # Convert to list format for display
+        conversation_list = []
+        for _, row in paginated_df.iterrows():
+            conversation_list.append([
+                row['timestamp'][:19],  # Trim milliseconds
+                row['conversation_id'][:8] + "...",  # Shorten ID
+                row['user_message'][:100] + "..." if len(row['user_message']) > 100 else row['user_message'],
+                row['ai_response'][:100] + "..." if len(row['ai_response']) > 100 else row['ai_response'],
+                row['selected_document'] or "N/A"
+            ])
+        
+        page_info = f"Page {page}/{total_pages}" if total_pages > 0 else "Page 0/0"
+        summary = f"Showing {len(conversation_list)} of {total_conversations} conversations"
+        
+        return conversation_list, page_info, total_pages, summary
+    except Exception as e:
+        return [], "Page 0/0", 0, f"Error loading conversations: {str(e)}"
 
 def update_monitoring_dashboard(start_date, end_date):
     """Update the monitoring dashboard with filtered data"""
@@ -150,11 +186,8 @@ def update_monitoring_dashboard(start_date, end_date):
         # Get key metrics
         metrics = get_key_metrics(start_date, end_date)
         
-        # Get conversation dataframe
-        conv_df = get_conversation_dataframe(start_date, end_date)
-        
-        # Create daily trends plot
-        plot = create_daily_trends_plot(start_date, end_date)
+        # Create daily trends data for LinePlot
+        trends_data = create_daily_trends_data(start_date, end_date)
         
         # Format metrics display
         metrics_text = f"""
@@ -165,12 +198,10 @@ def update_monitoring_dashboard(start_date, end_date):
 - **Unique Documents Chatted**: {metrics['unique_documents_chatted']}
         """
         
-        return metrics_text, plot, conv_df
+        return metrics_text, trends_data
     except Exception as e:
         error_text = f"Error updating dashboard: {str(e)}"
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.text(0.5, 0.5, 'Error loading data', ha='center', va='center', transform=ax.transAxes)
-        return error_text, fig, None
+        return error_text, None
 
 # Create the Gradio interface
 with gr.Blocks(title="Document Chat RAG System") as demo:
@@ -289,16 +320,66 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
                 with gr.Column(scale=1):
                     metrics_display = gr.Markdown("## Key Metrics\nLoading...")
                 with gr.Column(scale=2):
-                    trends_plot = gr.Plot(label="Daily Conversation Trends")
+                    trends_plot = gr.LinePlot(
+                        x="date",
+                        y="conversations",
+                        title="Daily Conversation Trends",
+                        x_title="Date",
+                        y_title="Number of Conversations",
+                        width=600,
+                        height=400
+                    )
+
+        # Conversation History Tab
+        with gr.TabItem("💬 Conversation History"):
+            gr.Markdown("## Conversation History & Search")
             
             with gr.Row():
-                conversation_data = gr.Dataframe(
-                    label="Conversation Details",
-                    headers=["Timestamp", "Conversation ID", "User Message", "AI Response", "Selected Document"],
-                    datatype=["str", "str", "str", "str", "str"],
-                    interactive=False,
-                    wrap=True
-                )
+                with gr.Column(scale=2):
+                    conv_search_input = gr.Textbox(
+                        label="Search Conversations",
+                        placeholder="Search in messages, responses, or document names..."
+                    )
+                with gr.Column(scale=1):
+                    conv_search_btn = gr.Button("Search", variant="primary")
+                with gr.Column(scale=1):
+                    conv_refresh_btn = gr.Button("Refresh")
+            
+            with gr.Row():
+                with gr.Column(scale=1):
+                    conv_start_date = gr.Textbox(
+                        label="Start Date (YYYY-MM-DD)",
+                        value=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+                        placeholder="2024-01-01"
+                    )
+                with gr.Column(scale=1):
+                    conv_end_date = gr.Textbox(
+                        label="End Date (YYYY-MM-DD)",
+                        value=datetime.now().strftime("%Y-%m-%d"),
+                        placeholder="2024-12-31"
+                    )
+                with gr.Column(scale=1):
+                    conv_filter_btn = gr.Button("Filter by Date", variant="secondary")
+            
+            conversation_summary = gr.Markdown("Loading conversation history...")
+            
+            conversation_data = gr.Dataframe(
+                label="Conversation Details",
+                headers=["Timestamp", "Conversation ID", "User Message", "AI Response", "Selected Document"],
+                datatype=["str", "str", "str", "str", "str"],
+                interactive=False,
+                wrap=True,
+                height=400
+            )
+            
+            with gr.Row():
+                conv_prev_btn = gr.Button("Previous Page")
+                conv_page_display = gr.Textbox(value="Page 1/1", interactive=False, scale=0)
+                conv_next_btn = gr.Button("Next Page")
+
+            # State variables for conversation pagination
+            conv_current_page = gr.State(1)
+            conv_total_pages = gr.State(1)
     
     # Event handlers
     upload_btn.click(
@@ -352,7 +433,7 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
     update_dashboard_btn.click(
         fn=update_monitoring_dashboard,
         inputs=[start_date_input, end_date_input],
-        outputs=[metrics_display, trends_plot, conversation_data]
+        outputs=[metrics_display, trends_plot]
     )
 
     # Load initial dashboard data
@@ -361,7 +442,69 @@ with gr.Blocks(title="Document Chat RAG System") as demo:
             (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
             datetime.now().strftime("%Y-%m-%d")
         ),
-        outputs=[metrics_display, trends_plot, conversation_data]
+        outputs=[metrics_display, trends_plot]
+    )
+
+    # Conversation history event handlers
+    def update_conversation_display(search_query, page, start_date, end_date):
+        conv_list, page_info, total_pages, summary = get_conversation_list_paginated(
+            search_query, page, start_date, end_date
+        )
+        return conv_list, page_info, total_pages, summary
+
+    def conv_search_handler(search_query, start_date, end_date):
+        conv_list, page_info, total_pages, summary = get_conversation_list_paginated(
+            search_query, 1, start_date, end_date
+        )
+        return conv_list, page_info, total_pages, summary, 1
+
+    def conv_prev_page_handler(search_query, current_page, total_pages, start_date, end_date):
+        new_page = max(1, current_page - 1)
+        conv_list, page_info, total_pages_updated, summary = get_conversation_list_paginated(
+            search_query, new_page, start_date, end_date
+        )
+        return conv_list, page_info, total_pages_updated, summary, new_page
+
+    def conv_next_page_handler(search_query, current_page, total_pages, start_date, end_date):
+        new_page = min(total_pages, current_page + 1)
+        conv_list, page_info, total_pages_updated, summary = get_conversation_list_paginated(
+            search_query, new_page, start_date, end_date
+        )
+        return conv_list, page_info, total_pages_updated, summary, new_page
+
+    conv_search_btn.click(
+        fn=conv_search_handler,
+        inputs=[conv_search_input, conv_start_date, conv_end_date],
+        outputs=[conversation_data, conv_page_display, conv_total_pages, conversation_summary, conv_current_page]
+    )
+
+    conv_filter_btn.click(
+        fn=conv_search_handler,
+        inputs=[conv_search_input, conv_start_date, conv_end_date],
+        outputs=[conversation_data, conv_page_display, conv_total_pages, conversation_summary, conv_current_page]
+    )
+
+    conv_refresh_btn.click(
+        fn=lambda: conv_search_handler("", (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"), datetime.now().strftime("%Y-%m-%d")),
+        outputs=[conversation_data, conv_page_display, conv_total_pages, conversation_summary, conv_current_page]
+    )
+
+    conv_prev_btn.click(
+        fn=conv_prev_page_handler,
+        inputs=[conv_search_input, conv_current_page, conv_total_pages, conv_start_date, conv_end_date],
+        outputs=[conversation_data, conv_page_display, conv_total_pages, conversation_summary, conv_current_page]
+    )
+
+    conv_next_btn.click(
+        fn=conv_next_page_handler,
+        inputs=[conv_search_input, conv_current_page, conv_total_pages, conv_start_date, conv_end_date],
+        outputs=[conversation_data, conv_page_display, conv_total_pages, conversation_summary, conv_current_page]
+    )
+
+    # Load initial conversation data
+    demo.load(
+        fn=lambda: conv_search_handler("", (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"), datetime.now().strftime("%Y-%m-%d")),
+        outputs=[conversation_data, conv_page_display, conv_total_pages, conversation_summary, conv_current_page]
     )
 
 if __name__ == "__main__":
