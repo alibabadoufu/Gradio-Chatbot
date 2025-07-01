@@ -2,6 +2,7 @@ import sqlite3
 import datetime
 import uuid
 import pandas as pd
+from typing import Optional
 
 DATABASE_FILE = "usage_logs.db"
 
@@ -40,7 +41,7 @@ def log_conversation(user_message: str, ai_response: str, selected_document: str
     conn.close()
     return conversation_id
 
-def get_usage_data(start_date: str = None, end_date: str = None):
+def get_usage_data(start_date: Optional[str] = None, end_date: Optional[str] = None):
     """Retrieves conversation logs from the database within a date range."""
     conn = sqlite3.connect(DATABASE_FILE)
     query = "SELECT * FROM conversations"
@@ -60,7 +61,7 @@ def get_usage_data(start_date: str = None, end_date: str = None):
     conn.close()
     return df
 
-def get_daily_trends(start_date: str = None, end_date: str = None):
+def get_daily_trends(start_date: Optional[str] = None, end_date: Optional[str] = None):
     """Calculates daily conversation trends."""
     df = get_usage_data(start_date, end_date)
     if df.empty:
@@ -69,14 +70,14 @@ def get_daily_trends(start_date: str = None, end_date: str = None):
     daily_counts = df.groupby("date")["conversation_id"].nunique().reset_index(name="conversations")
     return daily_counts
 
-def get_conversation_dataframe(start_date: str = None, end_date: str = None):
+def get_conversation_dataframe(start_date: Optional[str] = None, end_date: Optional[str] = None):
     """Returns a DataFrame of detailed conversation logs."""
     df = get_usage_data(start_date, end_date)
     if df.empty:
         return pd.DataFrame(columns=["timestamp", "conversation_id", "user_message", "ai_response", "selected_document"])
     return df[["timestamp", "conversation_id", "user_message", "ai_response", "selected_document"]]
 
-def get_key_metrics(start_date: str = None, end_date: str = None):
+def get_key_metrics(start_date: Optional[str] = None, end_date: Optional[str] = None):
     """Calculates key usage metrics."""
     df = get_usage_data(start_date, end_date)
     total_conversations = df["conversation_id"].nunique() if not df.empty else 0
