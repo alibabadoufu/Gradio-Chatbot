@@ -1,232 +1,309 @@
-# Document Chat RAG System with Usage Monitoring
+# 🦉 LangGraph OWL Multi-Agent System
 
-A Gradio-based chatbot application that allows users to upload documents and chat with them using an AI agent powered by LangGraph and OpenAI, with S3 integration for document and vectorstore storage, plus comprehensive usage monitoring and analytics.
+A **LangGraph implementation** of the OWL (Optimized Workforce Learning) multi-agent system that provides powerful multi-agent collaboration capabilities with real-time streaming support.
 
-## Features
+## 🚀 Features
 
-- **Document Upload**: Upload PDF documents for processing
-- **Intelligent Processing**: Automatic chunking and embedding using OpenAI embeddings
-- **S3 Storage**: Raw documents and individual FAISS vectorstores are stored in S3
-- **Agentic RAG**: LangGraph-powered agent that intelligently selects relevant documents and response types
-- **Interactive Chat**: Multi-tab Gradio interface for seamless user experience
-- **Document List Search**: Search for documents by name in the document list
-- **Document List Pagination**: Browse documents with pagination, showing 10 items per page
-- **📊 Usage Monitoring**: Comprehensive usage analytics and monitoring dashboard
-- **📈 Trend Analysis**: Daily conversation trends with interactive charts
-- **📋 Conversation Logs**: Detailed conversation history with filtering capabilities
-- **🔍 Date Range Filtering**: Filter all monitoring data by custom date ranges
+### Core Multi-Agent Architecture
+- **User Agent**: Provides step-by-step task instructions
+- **Assistant Agent**: Executes tasks using available tools
+- **Dynamic Collaboration**: Agents collaborate until task completion
+- **Real-time Streaming**: Watch agents work together in real-time
 
-## Architecture
+### Advanced Capabilities
+- **Comprehensive Toolkit**: Search, code execution, data analysis, web scraping, and more
+- **Streaming Interface**: Real-time updates via Gradio web interface
+- **Flexible Configuration**: Multiple models, tool selections, and parameters
+- **Async Support**: Full async/await support for high-performance applications
+- **Memory & Checkpointing**: Persistent conversation state with LangGraph
 
-The system follows the agentic RAG architecture shown in the reference diagram:
+### Tools & Integrations
+- **Search Tools**: DuckDuckGo, Wikipedia, web scraping
+- **Code Execution**: Python code execution with safety controls
+- **File Operations**: Read, write, and manage files
+- **Data Analysis**: Pandas, image analysis, data visualization
+- **Math & Computation**: SymPy, NumPy, advanced calculations
+- **Browser Automation**: Basic web automation capabilities
 
-1. **Query Processing**: User input is analyzed to determine the best vectorstore
-2. **Vector Database Selection**: Agent selects the most relevant document vectorstore from S3
-3. **Context Retrieval**: Relevant chunks are retrieved from the selected vectorstore (downloaded from S3 if not local)
-4. **Response Type Selection**: Agent determines whether to generate text, charts, or code
-5. **Response Generation**: Final response is generated based on the selected type
-6. **Usage Logging**: All conversations are automatically logged to SQLite database for monitoring
+## 📦 Installation
 
-## New Monitoring Features
+### Prerequisites
+- Python 3.10, 3.11, or 3.12
+- OpenAI API key (required)
+- Git (for cloning the repository)
 
-### 📊 Monitoring Dashboard
-The new "Monitoring" tab provides comprehensive usage analytics:
+### Quick Setup
 
-#### Key Metrics
-- **Total Conversations**: Number of unique conversation sessions
-- **Total Messages**: Total number of user messages processed
-- **Unique Documents Chatted**: Number of different documents users have interacted with
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd langgraph-owl
+   ```
 
-#### Daily Trends
-- Interactive line chart showing conversation volume over time
-- Customizable date range selection
-- Visual trend analysis for usage patterns
-
-#### Conversation Details
-- Complete conversation history in tabular format
-- Columns: Timestamp, Conversation ID, User Message, AI Response, Selected Document
-- Searchable and filterable data table
-- Export capabilities for further analysis
-
-#### Date Range Filtering
-- Filter all monitoring data by custom start and end dates
-- Default view shows last 30 days
-- Real-time dashboard updates
-
-### Database Schema
-The monitoring system uses SQLite with the following schema:
-```sql
-CREATE TABLE conversations (
-    id TEXT PRIMARY KEY,
-    timestamp TEXT NOT NULL,
-    user_message TEXT NOT NULL,
-    ai_response TEXT NOT NULL,
-    selected_document TEXT,
-    conversation_id TEXT NOT NULL
-);
-```
-
-## Installation
-
-1. Clone or download this project
-2. Install dependencies:
+2. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
-3. Set up your OpenAI API key and AWS S3 credentials:
+
+3. **Set up environment variables**
    ```bash
-   cp .env.example .env
-   # Edit .env and add your OpenAI API key, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and S3_BUCKET_NAME
+   cp .env.template .env
+   # Edit .env file with your API keys
    ```
 
-## Usage
-
-1. Start the application:
+4. **Run the example**
    ```bash
-   python app.py
+   cd langgraph_owl
+   python example.py
    ```
 
-2. Open your browser and navigate to `http://localhost:7860`
+5. **Launch the web interface**
+   ```bash
+   python webapp.py
+   ```
 
-3. Use the four tabs:
-   - **📄 Upload Documents**: Upload and process PDF files (stored in S3)
-   - **📋 Document List**: View all uploaded documents with search and pagination
-   - **💬 Chat**: Select a document and start chatting (conversations are automatically logged)
-   - **📊 Monitoring**: View usage analytics, trends, and conversation history
+## � Configuration
 
-## Project Structure
+### Environment Variables
 
-```
-gradio_chatbot_rag/
-├── app.py                     # Main Gradio application with monitoring
-├── backend/
-│   ├── __init__.py
-│   ├── document_processor.py  # Document processing and S3 integration
-│   ├── rag_agent.py          # LangGraph agentic RAG pipeline
-│   └── logger.py             # Usage logging and monitoring functions
-├── requirements.txt           # Python dependencies (includes pandas)
-├── .env.example              # Environment variables template
-├── README.md                 # This file
-├── test_sample.py            # Test script for core functionality
-├── test_logging.py           # Test script for logging and monitoring
-└── usage_logs.db             # SQLite database (created automatically)
+Create a `.env` file in the project root:
+
+```bash
+# Required
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional (for additional search capabilities)
+GOOGLE_API_KEY=your_google_api_key
+SEARCH_ENGINE_ID=your_search_engine_id
+TAVILY_API_KEY=your_tavily_api_key
 ```
 
-## Components
+### Model Configuration
 
-### Document Processor (`backend/document_processor.py`)
-- Loads PDF documents using LangChain
-- Splits documents into chunks using RecursiveCharacterTextSplitter
-- Creates embeddings using OpenAI embeddings
-- Uploads raw documents to S3
-- Saves and loads FAISS vectorstores to/from S3
+The system supports various OpenAI models:
+- `gpt-4o` (recommended for best performance)
+- `gpt-4o-mini` (recommended for cost-effective usage)
+- `gpt-4`
+- `gpt-4-turbo`
+- `gpt-3.5-turbo`
 
-### RAG Agent (`backend/rag_agent.py`)
-- Implements LangGraph workflow for agentic RAG
-- Selects appropriate vectorstore based on query
-- Retrieves relevant context from selected documents (loaded from S3)
-- Determines response type (text/chart/code)
-- Generates appropriate responses
+## 🎯 Usage Examples
 
-### Usage Logger (`backend/logger.py`)
-- **NEW**: Comprehensive logging system for usage monitoring
-- SQLite database for storing conversation history
-- Functions for retrieving usage data with date filtering
-- Analytics functions for trends, metrics, and detailed reports
-- Handles empty data gracefully
-
-### Gradio Interface (`app.py`)
-- Multi-tab interface for document management and chat
-- Real-time document processing feedback
-- Interactive chat with document selection
-- **NEW**: Comprehensive monitoring dashboard with:
-  - Date range selection controls
-  - Interactive trend charts using Gradio native LinePlot components
-  - Detailed conversation data tables
-  - Key metrics display
-- Responsive design for desktop and mobile
-
-## Monitoring API
-
-The monitoring system provides several key functions:
+### Basic Python Usage
 
 ```python
-# Log a conversation
-log_conversation(user_message, ai_response, selected_document, conversation_id)
+from langgraph_owl.core import create_owl_system
+from langgraph_owl.tools import create_comprehensive_toolkit
 
-# Get usage data with optional date filtering
-get_usage_data(start_date="2024-01-01", end_date="2024-12-31")
+# Create OWL system
+owl_system = create_owl_system(
+    model_name="gpt-4o-mini",
+    temperature=0.0,
+    max_rounds=10,
+    tools=create_comprehensive_toolkit(),
+    streaming=True
+)
 
-# Get daily conversation trends
-get_daily_trends(start_date="2024-01-01", end_date="2024-12-31")
-
-# Get detailed conversation dataframe
-get_conversation_dataframe(start_date="2024-01-01", end_date="2024-12-31")
-
-# Get key metrics
-get_key_metrics(start_date="2024-01-01", end_date="2024-12-31")
+# Run a task
+task = "Create a Python script that analyzes data from a CSV file"
+answer, chat_history, token_usage = owl_system.run(task)
+print(f"Answer: {answer}")
 ```
 
-## Requirements
+### Streaming Usage
 
-- Python 3.8+
-- OpenAI API key
-- AWS S3 bucket and credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-- Required packages (see requirements.txt):
-  - gradio, langchain, langchain-community, langchain-openai
-  - faiss-cpu, pypdf, numpy, python-dotenv, langgraph, boto3
-  - **NEW**: pandas (for data processing and monitoring)
+```python
+# Stream the execution
+for chunk in owl_system.stream(task):
+    print(f"Update: {chunk}")
+```
 
-## Testing
+### Async Usage
 
-The application includes comprehensive test suites:
+```python
+import asyncio
 
-1. **Core functionality tests**:
-   ```bash
-   python test_sample.py
-   ```
+async def main():
+    answer, chat_history, token_usage = await owl_system.arun(task)
+    print(f"Answer: {answer}")
 
-2. **Logging and monitoring tests**:
-   ```bash
-   python test_logging.py
-   ```
+asyncio.run(main())
+```
 
-## Notes
+### Web Interface Usage
 
-- Currently supports PDF documents only
-- Chart and code generation are placeholder features (can be extended)
-- The system requires an active internet connection for OpenAI API calls and S3 operations
-- **NEW**: Usage data is stored locally in SQLite database (`usage_logs.db`)
-- **NEW**: All conversations are automatically logged for monitoring purposes
-- **NEW**: The monitoring dashboard provides real-time insights into usage patterns
+Launch the web interface:
+```bash
+python langgraph_owl/webapp.py
+```
 
-## Privacy and Data
+Then open your browser to `http://localhost:7860`
 
-- Conversation logs are stored locally in SQLite database
-- No conversation data is sent to external services beyond OpenAI for response generation
-- Users can delete the `usage_logs.db` file to clear all monitoring data
-- Date range filtering allows users to view specific time periods
+## 🛠️ Architecture
 
-## Extending the System
+### Multi-Agent Flow
 
-The modular architecture allows for easy extensions:
+```
+User Input → User Agent → Assistant Agent → Tool Execution → Result
+     ↑                                                            ↓
+     ←──────────── Feedback Loop ←─────────────────────────────────
+```
 
-1. **Add new document types**: Extend `document_processor.py` with new loaders
-2. **Implement chart generation**: Add plotting logic to the RAG agent
-3. **Add code generation**: Implement code generation capabilities
-4. **Custom embeddings**: Replace OpenAI embeddings with local alternatives
-5. **Database integration**: Replace FAISS with persistent vector databases
-6. **Advanced analytics**: Extend `logger.py` with more sophisticated analytics
-7. **Export capabilities**: Add data export features to the monitoring dashboard
-8. **User management**: Add user authentication and per-user analytics
+### LangGraph State Management
 
-## Troubleshooting
+The system uses LangGraph's state management for:
+- **Message History**: Conversation between agents
+- **Task State**: Current progress and completion status
+- **Tool Results**: Outputs from tool executions
+- **Checkpointing**: Persistent state across sessions
 
-1. **Import errors**: Ensure all dependencies are installed
-2. **API errors**: Check your OpenAI API key in the `.env` file
-3. **S3 errors**: Ensure your AWS credentials and S3_BUCKET_NAME are correctly configured
-4. **Database errors**: Check file permissions for SQLite database creation
-5. **Monitoring issues**: Run `python test_logging.py` to verify logging functionality
-6. **Memory issues**: Adjust chunk sizes in `document_processor.py` for large documents
-7. **Chart display issues**: Ensure your browser supports Gradio's interactive components
+### Agent Roles
+
+**User Agent:**
+- Analyzes the overall task
+- Breaks down complex tasks into steps
+- Provides specific instructions to Assistant Agent
+- Monitors progress and provides feedback
+
+**Assistant Agent:**
+- Executes specific instructions
+- Uses tools to gather information or perform actions
+- Provides detailed solutions and explanations
+- Reports back to User Agent with results
+
+## 🧰 Available Tools
+
+### Search & Information
+- `SearchTool`: Web search via DuckDuckGo
+- `WikipediaSearchTool`: Wikipedia search
+- `WebScrapingTool`: Extract content from web pages
+
+### Code & Development
+- `CodeExecutionTool`: Execute Python code safely
+- `MathCalculationTool`: Advanced mathematical calculations
+- `FileWriteTool`: Write content to files
+
+### Analysis & Data
+- `DataAnalysisTool`: Analyze CSV, Excel, JSON files
+- `ImageAnalysisTool`: Basic image analysis
+- `BrowserAutomationTool`: Basic web automation
+
+### Tool Collections
+- `create_search_tools()`: Search and web tools
+- `create_code_tools()`: Programming tools
+- `create_analysis_tools()`: Data analysis tools
+- `create_comprehensive_toolkit()`: All tools combined
+
+## 🎨 Web Interface Features
+
+### Real-time Streaming
+- Live updates as agents collaborate
+- Step-by-step progress tracking
+- Real-time conversation log
+
+### Configuration Options
+- Model selection
+- Tool selection
+- Max rounds configuration
+- Task input with examples
+
+### User Experience
+- Clean, modern interface
+- Progress indicators
+- Copy-to-clipboard functionality
+- Example tasks for quick testing
+
+## 📊 Comparison with Original OWL
+
+| Feature | Original OWL | LangGraph OWL |
+|---------|--------------|---------------|
+| Multi-Agent Architecture | ✅ | ✅ |
+| Real-time Streaming | ✅ | ✅ |
+| Tool Integration | ✅ | ✅ |
+| Web Interface | ✅ | ✅ |
+| State Management | Custom | LangGraph |
+| Async Support | ✅ | ✅ |
+| Checkpointing | ❌ | ✅ |
+| Graph Visualization | ❌ | ✅ (via LangGraph) |
+
+## 🔍 Performance & Scaling
+
+### Memory Management
+- Efficient state management with LangGraph
+- Automatic memory cleanup
+- Configurable message history limits
+
+### Streaming Performance
+- Real-time updates without blocking
+- Efficient chunk processing
+- Minimal memory overhead
+
+### Token Usage
+- Automatic token counting
+- Usage reporting
+- Cost optimization tips
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**1. Import Errors**
+```bash
+# Install missing dependencies
+pip install -r requirements.txt
+```
+
+**2. API Key Issues**
+```bash
+# Check your .env file
+cat .env
+# Ensure OPENAI_API_KEY is set correctly
+```
+
+**3. Tool Execution Errors**
+```bash
+# Ensure Python is in PATH for code execution
+which python
+```
+
+### Debugging
+
+Enable verbose logging:
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📝 License
+
+This project is licensed under the same terms as the original OWL system.
+
+## 🙏 Acknowledgments
+
+- Original OWL system by CAMEL-AI
+- LangGraph by LangChain
+- Gradio for the web interface
+- OpenAI for the language models
+
+## 🆘 Support
+
+For issues and questions:
+1. Check the troubleshooting section
+2. Search existing issues
+3. Create a new issue with:
+   - Error messages
+   - Steps to reproduce
+   - Environment details
+
+---
+
+**Happy Multi-Agent Collaboration! 🦉✨**
 
